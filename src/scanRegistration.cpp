@@ -212,7 +212,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
         //printf("angle %f scanID %d \n", angle, scanID);
         // 计算水平角
         float ori = -atan2(point.y, point.x);
-        if (!halfPassed)
+        if (!halfPassed)    // tag: halfPassed这里是真的看不懂
         { 
             // 确保-PI / 2 < ori - startOri < 3 / 2 * PI
             if (ori < startOri - M_PI / 2)
@@ -245,20 +245,20 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
         // 角度的计算是为了计算相对的起始时刻的时间
         float relTime = (ori - startOri) / (endOri - startOri);
         // 整数部分是scan的索引，小数部分是相对起始时刻的时间
-        point.intensity = scanID + scanPeriod * relTime; // 算法中是不需要使用强度的，所以就保存了一些想要的量
+        point.intensity = scanID + scanPeriod * relTime; // intensity后续算法中没有使用它来定位，所以存了些想要的值：整数位是scan，小数位是该点的time-该帧起始时刻的time
         // 根据scan的idx送入各自数组
         laserCloudScans[scanID].push_back(point); 
     }
     // cloudSize是有效的点云的数目
-    cloudSize = count;
+    cloudSize = count;  // 算第几根线的时候，有些点不满足0~(N_SCANS-1)的范围限制，被筛掉了，也就没存到laserCloudScans[scanID]里面
     printf("points size %d \n", cloudSize);
 
     pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
     // 全部集合到一个点云里面去，但是使用两个数组标记其实和结果，这里分别+5和-6是为了计算曲率方便
     for (int i = 0; i < N_SCANS; i++)
     { 
-        scanStartInd[i] = laserCloud->size() + 5;
-        *laserCloud += laserCloudScans[i];
+        scanStartInd[i] = laserCloud->size() + 5;   // 因为算曲率每根scan的最左边的5个点和最右边5个点不算曲率，第一条线scanStartInd[0]=5，因为还没往laserCloud里放点，所以size是0，也就对应着第一条scan的第6个点是参与曲率计算的第一个点
+        *laserCloud += laserCloudScans[i]; // 等于说先把所有点拆成scan，一个scan扫到的点存到一个vector里，最后把所有scans的都合并到laserCloud里
         scanEndInd[i] = laserCloud->size() - 6;
     }
 
