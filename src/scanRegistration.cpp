@@ -263,7 +263,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
     }
 
     printf("prepare time %f \n", t_prepare.toc());
-    // 开始计算曲率
+    // 开始计算曲率 简单说就是10倍的中点points[i]的x或y或z，减去points[i-5] ~ points[i-1]和points[i+1] ~ points[i+5]的x或y或z
     for (int i = 5; i < cloudSize - 5; i++)
     { 
         float diffX = laserCloud->points[i - 5].x + laserCloud->points[i - 4].x + laserCloud->points[i - 3].x + laserCloud->points[i - 2].x + laserCloud->points[i - 1].x - 10 * laserCloud->points[i].x + laserCloud->points[i + 1].x + laserCloud->points[i + 2].x + laserCloud->points[i + 3].x + laserCloud->points[i + 4].x + laserCloud->points[i + 5].x;
@@ -296,13 +296,13 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
         // 将每个scan等分成6等分
         for (int j = 0; j < 6; j++)
         {
-            // 每个等分的起始和结束点
+            // 每个等分的起始和结束点 在这里只取了每根scan排除前和后5个点的曲率
             int sp = scanStartInd[i] + (scanEndInd[i] - scanStartInd[i]) * j / 6; 
             int ep = scanStartInd[i] + (scanEndInd[i] - scanStartInd[i]) * (j + 1) / 6 - 1;
 
             TicToc t_tmp;
             // 对点云按照曲率进行排序，小的在前，大的在后
-            std::sort (cloudSortInd + sp, cloudSortInd + ep + 1, comp);
+            std::sort (cloudSortInd + sp, cloudSortInd + ep + 1, comp); // 对index进行排序，排序规则是按照该index的曲率，从小到大排
             t_q_sort += t_tmp.toc();
 
             int largestPickedNum = 0;
@@ -344,7 +344,11 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
                     // 为了保证特征点不过度集中，将选中的点周围5个点都置1,避免后续会选到
                     for (int l = 1; l <= 5; l++)
                     {
-                        // 查看相邻点距离是否差异过大，如果差异过大说明点云在此不连续，是特征边缘，就会是新的特征，因此就不置位了
+                        /*  
+                            查看相邻点距离是否差异过大，如果差异过大说明点云在此不连续，是特征边缘，就会是新的特征，因此就不置位了
+                            这里是因为一些nan点和不合格的点在预处理时给去掉了，所以在laserCloud里相邻的点不一定是在物理世界相邻的，可能离得有一些距离
+                            如果相邻点和当前在判断角点的这个点差异很大，就代表这个点也可能是一个角点，需要保留；如果差异不大，就说明两点相邻，特征基本不变，不抛弃掉该点的曲率，即便该点的曲率也满足要求，也不再判断设为特征了
+                        */
                         float diffX = laserCloud->points[ind + l].x - laserCloud->points[ind + l - 1].x;
                         float diffY = laserCloud->points[ind + l].y - laserCloud->points[ind + l - 1].y;
                         float diffZ = laserCloud->points[ind + l].z - laserCloud->points[ind + l - 1].z;
@@ -420,7 +424,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
 
             for (int k = sp; k <= ep; k++)
             {
-                // 这里可以看到，剩下来的点都是一般平坦，这个也符合实际
+                // 这里可以看到，剩下来的点都是一般平坦，这个也符合实际，因为现实情况下角点都是比较少的，除了角点，其他的点都是较为平坦的点是合理的
                 if (cloudLabel[k] <= 0)
                 {
                     surfPointsLessFlatScan->push_back(laserCloud->points[k]);
