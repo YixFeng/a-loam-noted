@@ -434,7 +434,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
 
         pcl::PointCloud<PointType> surfPointsLessFlatScanDS;
         pcl::VoxelGrid<PointType> downSizeFilter;
-        // 一般平坦的点比较多，所以这里做一个体素滤波
+        // 一般平坦的点比较多，所以这里做一个体素滤波，下采样，取一个小voxel里所有点的重心
         downSizeFilter.setInputCloud(surfPointsLessFlatScan);
         downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
         downSizeFilter.filter(surfPointsLessFlatScanDS);
