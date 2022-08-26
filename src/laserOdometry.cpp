@@ -114,16 +114,19 @@ void TransformToStart(PointType const *const pi, PointType *const po)
     double s;
     // 由于kitti数据集上的lidar已经做过了运动补偿，因此这里就不做具体补偿了
     if (DISTORTION)
-        s = (pi->intensity - int(pi->intensity)) / SCAN_PERIOD;
+        s = (pi->intensity - int(pi->intensity)) / SCAN_PERIOD; // SCAN_PERIOD是0.1，其实就是10Hz的lidar，分子上是该点的时间 - 该帧第一个点的时间，所以这里的s代表scale，是比例
     else
         s = 1.0;    // s = 1s说明全部补偿到点云结束的时刻
     //s = 1;
     // 所有点的操作方式都是一致的，相当于从结束时刻补偿到起始时刻
     // 这里相当于是一个匀速模型的假设
-    Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
+    Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr); // slerp是四元数球面插值 https://www.cnblogs.com/21207-iHome/p/6952004.html
     Eigen::Vector3d t_point_last = s * t_last_curr;
     Eigen::Vector3d point(pi->x, pi->y, pi->z);
     Eigen::Vector3d un_point = q_point_last * point + t_point_last;
+    // 去畸变的原理就是：已知该点在本帧扫描中的时间戳，用匀速模型计算该点时刻相对于本帧扫描的起始时刻的SE(3)，也就是T_(start_current)，去恢复发生畸变的点。
+    // 畸变的发生就是因为雷达在移动，数据是默认雷达在一帧扫描也就是100ms(10Hz)以内是静止不动的，但是雷达的运动使得在新的雷达坐标系下的数据，对齐在了该帧点云的时间戳时刻对应的坐标系下，导致了畸变，
+    // 需要做的就是把新的坐标系下的点通过变换，改到统一的坐标系下，即该帧点云的统一时间戳时刻对应的坐标系下。
 
     po->x = un_point.x();
     po->y = un_point.y();

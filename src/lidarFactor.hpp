@@ -46,11 +46,12 @@ struct LidarEdgeFactor
 		return true;
 	}
 
+	// 静态函数会单独分一块内存，一直使用到程序终止，避免了反复的进栈出栈，速度更快。切记：静态函数只能在当前文件中调用
 	static ceres::CostFunction *Create(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_a_,
 									   const Eigen::Vector3d last_point_b_, const double s_)
 	{
 		return (new ceres::AutoDiffCostFunction<
-				LidarEdgeFactor, 3, 4, 3>(
+				LidarEdgeFactor, 3, 4, 3>( // 3 4 3分别是residual，q和t的维度
 			new LidarEdgeFactor(curr_point_, last_point_a_, last_point_b_, s_)));
 	}
 
