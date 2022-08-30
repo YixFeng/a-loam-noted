@@ -292,7 +292,9 @@ int main(int argc, char **argv)
                     plane_correspondence = 0;
 
                     //ceres::LossFunction *loss_function = NULL;
-                    // 定义一下ceres的核函数
+                    // 定义一下ceres的核函数 残差超过0.1就加huber factor
+                    // HuberLoss: s, s<=1
+                    //            2*sqrt(s)-1, s>1
                     ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
                     // 由于旋转不满足一般意义的加法，因此这里使用ceres自带的local param
                     ceres::LocalParameterization *q_parameterization =
@@ -300,8 +302,8 @@ int main(int argc, char **argv)
                     ceres::Problem::Options problem_options;
 
                     ceres::Problem problem(problem_options);
-                    // 待优化的变量是帧间位姿，平移和旋转，这里旋转使用四元数来表示
-                    problem.AddParameterBlock(para_q, 4, q_parameterization);
+                    // 待优化的变量是帧间位姿，平移和旋转，这里旋转使用四元数来表示 ceres只会对数组进行计算，并不会对其他类型比如Eigen里的进行处理
+                    problem.AddParameterBlock(para_q, 4, q_parameterization);   // 如果不定义这个q_parameterization，四元数计算出的delta q会通过加法加到q上
                     problem.AddParameterBlock(para_t, 3);
 
                     pcl::PointXYZI pointSel;
@@ -329,6 +331,9 @@ int main(int argc, char **argv)
                             double minPointSqDis2 = DISTANCE_SQ_THRESHOLD;
                             // search in the direction of increasing scan line
                             // 寻找角点，在刚刚角点id上下分别继续寻找，目的是找到最近的角点，由于其按照线束进行排序，所以就是向上找
+                            // 这里的意思是：首先需要最小化残差的并不是dist(point2point)而是dist(point2line)，一条线起码要有两个点，现在用KDTree找到了一个点A，另一个点B需要在与A不同的Scan上，我认为原因是，
+                            //             如果A和B在同一根Scan上，那问题就变成了当前帧中的角点和前一帧中该角点对应的Scan那条线求最小残差，假如是一辆小车在平坦路面上行驶，路边的特征很有可能导致Scan这根线和汽车的行进方向平行，
+                            //             前后两帧的优化问题就会丢失对行进方向x这个维度的优化(这里假设x向前，y向左，z向上)。如果这两个点不在同一个Scan，连成的线也不一定与z方向平行，即便平行，对汽车而言，z方向的移动较少，对整体系统影响不大。
                             for (int j = closestPointInd + 1; j < (int)laserCloudCornerLast->points.size(); ++j)
                             {
                                 // if in the same scan line, continue
@@ -339,7 +344,7 @@ int main(int argc, char **argv)
                                 // if not in nearby scans, end the loop
                                 // 要求找到的线束距离当前线束不能太远
                                 if (int(laserCloudCornerLast->points[j].intensity) > (closestPointScanID + NEARBY_SCAN))
-                                    break;
+                                    break;  // 直接break的原因是：lasCloudCornerLast->points的点是按照从小到大的ScanID排的，如果前者的Scan大于阈值，后面的肯定也大
                                 // 计算和当前找到的角点之间的距离
                                 double pointSqDis = (laserCloudCornerLast->points[j].x - pointSel.x) *
                                                         (laserCloudCornerLast->points[j].x - pointSel.x) +
@@ -404,12 +409,14 @@ int main(int argc, char **argv)
                             else
                                 s = 1.0;
                             ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
-                            problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                            problem.AddResidualBlock(cost_function, loss_function, para_q, para_t); 
+                            // 如果没有loss_function要填nullptr，这里是每个匹配项添加一个ResidualBlock，然后优化项q和t会在每一帧进去的时候AddParameterBlock添加，如果优化项不符合加法(比如四元数)那就需要给它指定运算方式
                             corner_correspondence++;
                         }
                     }
 
                     // find correspondence for plane features
+                    // 三点成面，针对当前帧面点，在上一帧找该面点的corresponding plane，为了保证三点成面的三点不会在同一条直线上，选择一条Scan上两点，再在另一条Scan上取一点，一定能构造成一个平面
                     for (int i = 0; i < surfPointsFlatNum; ++i)
                     {
                         TransformToStart(&(surfPointsFlat->points[i]), &pointSel);
@@ -528,7 +535,7 @@ int main(int argc, char **argv)
                     // 调用ceres求解器求解
                     TicToc t_solver;
                     ceres::Solver::Options options;
-                    options.linear_solver_type = ceres::DENSE_QR;
+                    options.linear_solver_type = ceres::DENSE_QR;   // 这里是前端，也不是稀疏矩阵，所以选用了稠密的QR求解
                     options.max_num_iterations = 4;
                     options.minimizer_progress_to_stdout = false;
                     ceres::Solver::Summary summary;
@@ -601,6 +608,7 @@ int main(int argc, char **argv)
 
             // std::cout << "the size of corner last is " << laserCloudCornerLastNum << ", and the size of surf last is " << laserCloudSurfLastNum << '\n';
             // kdtree设置当前帧，用来下一帧lidar odom使用
+            // laserCloudCornerLast和laserCloudSurfLast分别是当前帧中Sharp+LessSharp和Flat和LessFlat，等于说后一帧的Sharp会和前面帧的Sharp+LessSharp匹配，Flat同理
             kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
             kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
             // 一定降频后给后端发送

@@ -9,6 +9,7 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+// 类用来把需要的数据都传进来，比如说corresponding points和s，s是curr_point.timestamp / scan_period；然后重载()用来传入优化量和残差模型，需要是一个模板函数
 struct LidarEdgeFactor
 {
 	LidarEdgeFactor(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_a_,
@@ -28,7 +29,7 @@ struct LidarEdgeFactor
 		Eigen::Quaternion<T> q_identity{T(1), T(0), T(0), T(0)};
 		// 计算的是上一帧到当前帧的位姿变换，因此根据匀速模型，计算该点对应的位姿
 		// 这里暂时不考虑畸变，因此这里不做任何变换
-		q_last_curr = q_identity.slerp(T(s), q_last_curr);
+		q_last_curr = q_identity.slerp(T(s), q_last_curr);	// 匀速模型：用上一帧的运动变化初始化下一帧的运动变化，如果DISTORTION=True，那就用slerp插值q，t线性插值
 		Eigen::Matrix<T, 3, 1> t_last_curr{T(s) * t[0], T(s) * t[1], T(s) * t[2]};
 
 		Eigen::Matrix<T, 3, 1> lp;
@@ -37,11 +38,12 @@ struct LidarEdgeFactor
 
 		Eigen::Matrix<T, 3, 1> nu = (lp - lpa).cross(lp - lpb);	// 模是三角形的面积
 		Eigen::Matrix<T, 3, 1> de = lpa - lpb;
-		// 残差的模是该点到底边的垂线长度
+		// 残差的模是该点到底边的垂线长度 |nu| / |de|是垂线长度，而nu是垂直于三点平面的法向量
 		// 这里感觉不需要定义三维
 		residual[0] = nu.x() / de.norm();
 		residual[1] = nu.y() / de.norm();
 		residual[2] = nu.z() / de.norm();
+		// residual的正负无所谓，ceres会计算\Sigma(residual^2)
 
 		return true;
 	}
