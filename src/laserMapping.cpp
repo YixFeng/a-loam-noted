@@ -110,6 +110,7 @@ pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap(new pcl::KdTreeFLANN<PointTyp
 double parameters[7] = {0, 0, 0, 1, 0, 0, 0};
 Eigen::Map<Eigen::Quaterniond> q_w_curr(parameters);
 Eigen::Map<Eigen::Vector3d> t_w_curr(parameters + 4);
+// Eigen::Map能把paramters里存的元素无需内存拷贝的映射到q_w_curr和t_w_curr里，parameters里的元素会随着ceres优化更新，q_w_curr和t_w_curr也会随之更新
 
 // wmap_T_odom * odom_T_curr = wmap_T_curr;
 // transformation between odom's world and map's world frame
@@ -315,7 +316,7 @@ void process()
 
 			TicToc t_shift;
 			// 根据初始估计值计算寻找当前位姿在地图中的索引，一个各自边长是50m
-			// 后端的地图本质上是一个以当前点为中心，一个珊格地图
+			// 后端的地图本质上是一个以当前点为中心，一个珊格地图 +25.0是用来四舍五入
 			int centerCubeI = int((t_w_curr.x() + 25.0) / 50.0) + laserCloudCenWidth;
 			int centerCubeJ = int((t_w_curr.y() + 25.0) / 50.0) + laserCloudCenHeight;
 			int centerCubeK = int((t_w_curr.z() + 25.0) / 50.0) + laserCloudCenDepth;
